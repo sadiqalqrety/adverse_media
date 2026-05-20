@@ -15,6 +15,15 @@ class QueryPerson:
 
 
 @dataclass
+class StatisticalScreeningResult:
+    """Output of StatisticalSemanticExtractor dependency-tree analysis."""
+
+    adverse_entity_hits: dict[str, list[str]]  # entity name → adverse lemmas linked via dep tree
+    has_adverse_signal: bool
+    risk_score: float  # 0.0–1.0, normalised adverse signal intensity
+
+
+@dataclass
 class ScreeningResult:
     """Full output of a single adverse media screening run."""
 
@@ -31,3 +40,4 @@ class ScreeningResult:
     key_adverse_facts: list[str] = field(default_factory=list)
     key_positive_facts: list[str] = field(default_factory=list)
     analyst_note: str = ""
+    statistical_result: Optional[StatisticalScreeningResult] = None
