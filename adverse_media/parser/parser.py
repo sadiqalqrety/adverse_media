@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import Optional
 
+import spacy
 from bs4 import BeautifulSoup
+from spacy.language import Language
 
 from .models import Article
 
@@ -19,9 +22,14 @@ _BODY_CLASSES = re.compile(
     r"\b(article|story|content|post|body|entry|main)\b", re.I
 )
 
+_LEMMA_MODELS = ("en_core_web_lg", "en_core_web_sm")
+
 
 class ArticleParser:
     """Extracts a clean title and body text from raw HTML."""
+
+    def __init__(self, model: str | None = None) -> None:
+        self._nlp: Optional[Language] = self._load_spacy_model(model)
 
     def parse(self, html: str, url: str) -> Article:
         """Return an :class:`Article` parsed from *html*.
@@ -54,7 +62,14 @@ class ArticleParser:
                 "truncated": truncated,
             },
         )
-        return Article(url=url, title=title, text=text[:_MAX_TEXT_CHARS], html=html)
+        clipped = text[:_MAX_TEXT_CHARS]
+        return Article(
+            url=url,
+            title=title,
+            text=clipped,
+            html=html,
+            lemmatized_text=self._construct_lemmatized_text(clipped),
+        )
 
     # ──────────────────────────────────────────────────────────────────────────
 
@@ -90,3 +105,33 @@ class ArticleParser:
 
         # Collapse all whitespace into single spaces
         return " ".join(body.get_text(separator=" ").split())
+
+    @staticmethod
+    def _load_spacy_model(preferred: str | None) -> Optional[Language]:
+        candidates = ([preferred] + list(_LEMMA_MODELS)) if preferred else list(_LEMMA_MODELS)
+        for model_name in candidates:
+            if model_name is None:
+                continue
+            try:
+                nlp = spacy.load(model_name, disable=["ner", "parser"])
+                logger.info("spaCy lemmatizer model loaded", extra={"spacy_model": model_name})
+                return nlp
+            except OSError:
+                continue
+        logger.warning(
+            "No spaCy model available for lemmatization; lemmatized_text will be empty",
+            extra={"tried_models": list(_LEMMA_MODELS)},
+        )
+        return None
+
+    def _construct_lemmatized_text(self, text: str) -> str:
+        """Return a whitespace-joined string of lowercase lemmas.
+
+        Strips non-alphabetic tokens (punctuation, numbers, apostrophes, etc.)
+        and reduces each remaining word to its dictionary base form via spaCy.
+        Returns an empty string when no spaCy model is available.
+        """
+        if self._nlp is None:
+            return ""
+        doc = self._nlp(text)
+        return " ".join(token.lemma_.lower() for token in doc if token.is_alpha)

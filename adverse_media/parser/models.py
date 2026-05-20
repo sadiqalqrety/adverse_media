@@ -13,3 +13,4 @@ class Article:
     title: str
     text: str
     html: str
+    lemmatized_text: str

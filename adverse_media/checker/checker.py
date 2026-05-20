@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from ..extractor import NamedEntityExtractor, SemanticExtractor
+from ..extractor import NamedEntityExtractor, LLMSemanticExtractor
 from ..fetcher import ArticleFetcher
 from .models import QueryPerson, ScreeningResult
 from ..parser import ArticleParser
@@ -30,12 +30,12 @@ class AdverseMediaChecker:
         fetcher: ArticleFetcher | None = None,
         parser: ArticleParser | None = None,
         ner: NamedEntityExtractor | None = None,
-        semantic: SemanticExtractor | None = None,
+        semantic: LLMSemanticExtractor | None = None,
     ) -> None:
         self._fetcher = fetcher or ArticleFetcher()
         self._parser = parser or ArticleParser()
         self._ner = ner or NamedEntityExtractor()
-        self._semantic = semantic or SemanticExtractor()
+        self._semantic = semantic or LLMSemanticExtractor()
 
     def screen(self, name: str, dob: Optional[str], url: str) -> ScreeningResult:
         """Run the full pipeline and return a :class:`ScreeningResult`.
@@ -44,7 +44,7 @@ class AdverseMediaChecker:
           1. :class:`ArticleFetcher`      — fetch raw HTML from *url*
           2. :class:`ArticleParser`       — extract clean title + body text
           3. :class:`NamedEntityExtractor`— surface PERSON entities via spaCy NER
-          4. :class:`SemanticExtractor`   — deep match + sentiment analysis via Claude
+          4. :class:`LLMSemanticExtractor` — deep match + sentiment analysis via Claude
         """
         logger.info(
             "Screening started",
