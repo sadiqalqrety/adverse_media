@@ -1,0 +1,5 @@
+"""logging_config — structured JSON logging setup."""
+
+from .config import configure_logging
+
+__all__ = ["configure_logging"]
