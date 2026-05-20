@@ -51,13 +51,13 @@ Evaluates the NER component and optionally the full screening pipeline against C
 
 ```bash
 # NER benchmark only (no API calls)
-poetry run python -m nlp_benchmarking.eval
+poetry run python -m benchmarking.eval
 
 # Full pipeline benchmark (makes Claude API calls, 50 cases per class)
-poetry run python -m nlp_benchmarking.eval --full --sample 50
+poetry run python -m benchmarking.eval --full --sample 50
 
 # All options
-poetry run python -m nlp_benchmarking.eval --help
+poetry run python -m benchmarking.eval --help
 ```
 
 ## Logging

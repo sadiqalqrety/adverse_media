@@ -15,9 +15,9 @@ Two benchmarks are available:
   adverse media screening.
 
 Usage:
-    python -m nlp_benchmarking.eval                        # NER only
-    python -m nlp_benchmarking.eval --full --sample 50     # NER + screening
-    python -m nlp_benchmarking.eval --full --split validation --sample 30
+    python -m benchmarking.eval                        # NER only
+    python -m benchmarking.eval --full --sample 50     # NER + screening
+    python -m benchmarking.eval --full --split validation --sample 30
 """
 
 from __future__ import annotations
@@ -229,19 +229,19 @@ def print_report(
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="python -m nlp_benchmarking.eval",
+        prog="python -m benchmarking.eval",
         description="Benchmark the adverse_media checker against CoNLL-2003.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=textwrap.dedent("""\
             examples:
               # NER-only (free, no API calls):
-              python -m nlp_benchmarking.eval
+              python -m benchmarking.eval
 
               # Full pipeline with Claude (50 cases per class):
-              python -m nlp_benchmarking.eval --full --sample 50
+              python -m benchmarking.eval --full --sample 50
 
               # Use validation split, 30 cases, custom sentence grouping:
-              python -m nlp_benchmarking.eval --full --split validation \\
+              python -m benchmarking.eval --full --split validation \\
                   --sample 30 --doc-sentences 8
         """),
     )
