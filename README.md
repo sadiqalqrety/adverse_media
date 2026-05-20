@@ -10,8 +10,12 @@ Requires Python 3.12 and [Poetry](https://python-poetry.org/docs/#installation).
 # Install all dependencies declared in pyproject.toml
 poetry install
 
-# Download the multilingual spaCy NER model (required for the NER step)
+# Multilingual NER model (required for entity recognition)
 poetry run python -m spacy download xx_ent_wiki_sm
+
+# English dependency-parser model (required for statistical adverse-signal detection)
+# en_core_web_lg is preferred; en_core_web_sm is a smaller fallback (~50 MB vs ~400 MB)
+poetry run python -m spacy download en_core_web_lg
 ```
 
 Set your Anthropic API key before running:
