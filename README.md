@@ -77,21 +77,6 @@ poetry run python -m adverse_media.app \
   --skip-llm-semantic-extractor True
 ```
 
-## Running the NLP benchmark
-
-Evaluates the NER component and optionally the full screening pipeline against CoNLL-2003.
-
-```bash
-# NER benchmark only (no API calls)
-poetry run python -m benchmarking.eval
-
-# Full pipeline benchmark (makes Claude API calls, 50 cases per class)
-poetry run python -m benchmarking.eval --full --sample 50
-
-# All options
-poetry run python -m benchmarking.eval --help
-```
-
 ## Limitations
 
 The pipeline has three extraction layers: a spaCy NER pass (`NamedEntityExtractor`), a spaCy dependency-tree pass (`StatisticalSemanticExtractor`), and a Claude LLM pass (`LLMSemanticExtractor`). The table below summarises how each layer handles four known edge cases.
