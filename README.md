@@ -77,6 +77,11 @@ The pipeline has three extraction layers: a spaCy NER pass (`NamedEntityExtracto
 
 **Key takeaway:** `StatisticalSemanticExtractor` is English-only and performs no name matching — all four cases effectively rely on `LLMSemanticExtractor` for correct handling. The spaCy layers serve as signal pre-filters and hints, not authoritative identity resolvers.
 
+## Further reading
+
+- [Part I — Current approach](part_i.md): high-level walkthrough of the five-stage screening pipeline.
+- [Part II — Agentic enrichment](part_ii.md): design plan for automating web-research enrichment when key disambiguating details are absent from an article.
+
 ## Logging
 
 The log level is controlled via the `LOG_LEVEL` environment variable (default: `INFO`). All output is structured JSON, suitable for log-aggregation systems.
