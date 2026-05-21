@@ -53,7 +53,7 @@ def main() -> None:
     if args.output_json:
         print(json.dumps(dataclasses.asdict(result), indent=2, ensure_ascii=False))
     else:
-        renderer.render(name, dob, url, result)
+        renderer.render(name, dob, url, result, detailed=args.detailed)
 
 
 if __name__ == "__main__":

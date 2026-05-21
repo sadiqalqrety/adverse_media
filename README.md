@@ -56,6 +56,14 @@ poetry run python -m adverse_media.app \
   --dob 1985-03-15 \
   --url "https://example.com/news/article" \
   --json
+
+# Full structured report — match reasoning, statistical pre-screen, sentiment breakdown, analyst note
+# (default is a two-line summary: verdict + sentiment)
+poetry run python -m adverse_media.app \
+  --name "James Smith" \
+  --dob 1985-03-15 \
+  --url "https://example.com/news/article" \
+  --detailed True
 ```
 
 ## Running the NLP benchmark

@@ -51,9 +51,9 @@ class Renderer:
         return Panel(qt, title="Query", border_style="cyan")
 
     @staticmethod
-    def build_persons_panel(persons_found: List[dict]) -> Optional[Panel]:
+    def build_persons_panel(persons_found: List[dict]) -> Panel:
         if not persons_found:
-            return None
+            return Panel("No individuals identified.", title="Named individuals found", border_style="dim white")
         pt = Table(box=box.SIMPLE, show_header=True, padding=(0, 1))
         pt.add_column("Name in article", style="bold")
         pt.add_column("Context / role")
@@ -79,36 +79,18 @@ class Renderer:
         return vt
 
     @staticmethod
-    def build_match_reasoning_panel(reasoning: Optional[str], border_color: str) -> Optional[Panel]:
-        if not reasoning:
-            return None
+    def build_match_reasoning_panel(reasoning: Optional[str], border_color: str) -> Panel:
         return Panel(
-            textwrap.fill(reasoning, width=88),
+            textwrap.fill(reasoning, width=88) if reasoning else "No match reasoning provided.",
             title="[bold]Match reasoning[/bold]",
             border_style=border_color,
         )
 
     @staticmethod
-    def build_sentiment_text(sentiment: str, sentiment_confidence: Optional[float]) -> Text:
-        sent_style = _SENTIMENT_STYLE.get(sentiment, "bold white")
-        st = Text()
-        st.append("  Sentiment: ", style="bold")
-        st.append(f" {sentiment} ", style=f"{sent_style} reverse")
-        st.append(f"   confidence: {Renderer._pct(sentiment_confidence)}")
-        return st
+    def build_statistical_panel(stat: Optional[StatisticalScreeningResult]) -> Panel:
+        if stat is None:
+            return Panel("No statistical result.", title="Statistical pre-screen", border_style="dim white")
 
-    @staticmethod
-    def build_sentiment_reasoning_panel(reasoning: Optional[str], border_color: str) -> Optional[Panel]:
-        if not reasoning:
-            return None
-        return Panel(
-            textwrap.fill(reasoning, width=88),
-            title="[bold]Sentiment reasoning[/bold]",
-            border_style=border_color,
-        )
-
-    @staticmethod
-    def build_statistical_panel(stat: StatisticalScreeningResult) -> Panel:
         border_color = "red" if stat.has_adverse_signal else "green"
         signal_label = "[bold red]YES[/bold red]" if stat.has_adverse_signal else "[bold green]NO[/bold green]"
 
@@ -124,7 +106,6 @@ class Renderer:
             ht.add_column("Linked adverse signals")
             for entity, lemmas in stat.adverse_entity_hits.items():
                 ht.add_row(escape(entity), escape(", ".join(lemmas)))
-
             content: object = Group(st, ht)
         else:
             content = st
@@ -132,19 +113,68 @@ class Renderer:
         return Panel(content, title="Statistical pre-screen", border_style=border_color)
 
     @staticmethod
-    def build_analyst_note_panel(analyst_note: Optional[str]) -> Optional[Panel]:
-        if not analyst_note:
-            return None
+    def build_sentiment_text(sentiment: str, sentiment_confidence: Optional[float]) -> Text:
+        sent_style = _SENTIMENT_STYLE.get(sentiment, "bold white")
+        st = Text()
+        st.append("  Sentiment: ", style="bold")
+        st.append(f" {sentiment} ", style=f"{sent_style} reverse")
+        st.append(f"   confidence: {Renderer._pct(sentiment_confidence)}")
+        return st
+
+    @staticmethod
+    def build_sentiment_reasoning_panel(reasoning: Optional[str], border_color: str) -> Panel:
         return Panel(
-            textwrap.fill(analyst_note, width=88),
+            textwrap.fill(reasoning, width=88) if reasoning else "No sentiment reasoning provided.",
+            title="[bold]Sentiment reasoning[/bold]",
+            border_style=border_color,
+        )
+
+    @staticmethod
+    def build_analyst_note_panel(analyst_note: Optional[str]) -> Panel:
+        return Panel(
+            textwrap.fill(analyst_note, width=88) if analyst_note else "No analyst note.",
             title="[bold yellow]Analyst note[/bold yellow]",
             border_style="yellow",
         )
 
+    # ── Brief output (default) ────────────────────────────────────────────────
+
+    def _render_brief(self, result: ScreeningResult) -> None:
+        verdict_style = _VERDICT_STYLE.get(result.match_assessment, "bold white")
+        line1 = Text()
+        line1.append(f"  {result.match_assessment}  ", style=f"{verdict_style} reverse")
+        line1.append(f"   {self._pct(result.match_confidence)} confidence")
+        if result.matched_name_in_article:
+            line1.append(f'   matched as: "{escape(result.matched_name_in_article)}"')
+
+        self.console.print()
+        self.console.print(line1)
+
+        if result.match_assessment != "DISCARD" and result.sentiment:
+            self.console.print(self.build_sentiment_text(result.sentiment, result.sentiment_confidence))
+
+        self.console.print()
+
     # ── Main entry point ──────────────────────────────────────────────────────
 
-    def render(self, name: str, dob: Optional[str], url: str, result: ScreeningResult) -> None:
-        """Print a formatted screening report to the terminal."""
+    def render(
+        self,
+        name: str,
+        dob: Optional[str],
+        url: str,
+        result: ScreeningResult,
+        *,
+        detailed: bool = False,
+    ) -> None:
+        """Print a screening report to the terminal.
+
+        By default prints two lines: match verdict and sentiment.
+        Pass detailed=True for the full structured report.
+        """
+        if not detailed:
+            self._render_brief(result)
+            return
+
         verdict_style = _VERDICT_STYLE.get(result.match_assessment, "bold white")
         border_color = verdict_style.split()[-1]
 
@@ -153,10 +183,7 @@ class Renderer:
         self.console.print()
 
         self.console.print(self.build_query_panel(name, dob, url, result.language))
-
-        persons_panel = self.build_persons_panel(result.persons_found or [])
-        if persons_panel is not None:
-            self.console.print(persons_panel)
+        self.console.print(self.build_persons_panel(result.persons_found or []))
 
         self.console.print()
         self.console.print(self.build_verdict_text(
@@ -164,12 +191,8 @@ class Renderer:
         ))
         self.console.print()
 
-        match_panel = self.build_match_reasoning_panel(result.match_reasoning, border_color)
-        if match_panel is not None:
-            self.console.print(match_panel)
-
-        if result.statistical_result is not None:
-            self.console.print(self.build_statistical_panel(result.statistical_result))
+        self.console.print(self.build_match_reasoning_panel(result.match_reasoning, border_color))
+        self.console.print(self.build_statistical_panel(result.statistical_result))
 
         if result.dob_evidence and result.dob_evidence.lower() not in ("none found", "none", ""):
             self.console.print(f"\n  [bold]DOB / age evidence:[/bold] {escape(result.dob_evidence)}")
@@ -180,10 +203,7 @@ class Renderer:
 
             self.console.print()
             self.console.print(self.build_sentiment_text(result.sentiment, result.sentiment_confidence))
-
-            sent_panel = self.build_sentiment_reasoning_panel(result.sentiment_reasoning, sent_border)
-            if sent_panel is not None:
-                self.console.print(sent_panel)
+            self.console.print(self.build_sentiment_reasoning_panel(result.sentiment_reasoning, sent_border))
 
             if result.key_adverse_facts:
                 self.console.print("\n  [bold red]Key adverse facts:[/bold red]")
@@ -195,10 +215,8 @@ class Renderer:
                 for fact in result.key_positive_facts:
                     self.console.print(f"    • {escape(str(fact))}")
 
-        analyst_panel = self.build_analyst_note_panel(result.analyst_note)
-        if analyst_panel is not None:
-            self.console.print()
-            self.console.print(analyst_panel)
+        self.console.print()
+        self.console.print(self.build_analyst_note_panel(result.analyst_note))
 
         self.console.print()
         self.console.rule()

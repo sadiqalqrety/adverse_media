@@ -28,6 +28,9 @@ def build_parser() -> argparse.ArgumentParser:
 
               # Machine-readable JSON for downstream pipelines:
               python -m adverse_media.app --name "..." --url "..." --json
+
+              # Full structured report (default is a two-line summary):
+              python -m adverse_media.app --name "James Smith" --url "https://..." --detailed True
         """),
     )
     p.add_argument("--name", help="Full name of the individual to screen for")
@@ -39,6 +42,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--json", action="store_true", dest="output_json",
         help="Print raw JSON instead of a formatted report",
+    )
+    p.add_argument(
+        "--detailed", type=lambda x: x.lower() == "true", default=False,
+        metavar="True|False",
+        help="Print the full structured report (default: False — two-line summary)",
     )
     return p
 
