@@ -6,7 +6,6 @@ Adverse media screening tool — given a person's name and date of birth and a n
 
 - [Installation](#installation)
 - [Running the tool](#running-the-tool)
-- [Running the NLP benchmark](#running-the-nlp-benchmark)
 - [Limitations](#limitations)
 - [Further reading](#further-reading)
 - [Logging](#logging)
