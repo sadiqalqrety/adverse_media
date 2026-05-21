@@ -16,7 +16,7 @@ from rich.console import Console
 from .checker import AdverseMediaChecker
 from .cli import build_parser, normalise_dob, prompt
 from .logging_config import configure_logging
-from .renderer import render
+from .renderer import renderer
 
 console = Console()
 
@@ -53,7 +53,7 @@ def main() -> None:
     if args.output_json:
         print(json.dumps(dataclasses.asdict(result), indent=2, ensure_ascii=False))
     else:
-        render(name, dob, url, result)
+        renderer.render(name, dob, url, result)
 
 
 if __name__ == "__main__":

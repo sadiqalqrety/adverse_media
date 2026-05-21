@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import textwrap
-from typing import Optional
+from typing import List, Optional
 
 from rich import box
 from rich.console import Console
@@ -13,8 +13,6 @@ from rich.table import Table
 from rich.text import Text
 
 from ..checker.models import ScreeningResult
-
-console = Console()
 
 _VERDICT_STYLE = {
     "DISCARD": "bold green",
@@ -29,99 +27,155 @@ _SENTIMENT_STYLE = {
 }
 
 
-def _pct(value: Optional[float]) -> str:
-    return f"{value * 100:.0f}%" if value is not None else "—"
+class Renderer:
+    def __init__(self, console: Optional[Console] = None) -> None:
+        self.console = console or Console()
 
+    # ── Helpers ───────────────────────────────────────────────────────────────
 
-def render(name: str, dob: Optional[str], url: str, result: ScreeningResult) -> None:
-    """Print a formatted screening report to the terminal."""
-    verdict_style = _VERDICT_STYLE.get(result.match_assessment, "bold white")
-    border_color = verdict_style.split()[-1]
+    @staticmethod
+    def _pct(value: Optional[float]) -> str:
+        return f"{value * 100:.0f}%" if value is not None else "—"
 
-    console.print()
-    console.rule("[bold]Adverse Media Screening Report[/bold]")
-    console.print()
+    # ── Panel / text builders ─────────────────────────────────────────────────
 
-    # ── Query summary ─────────────────────────────────────────────────────────
-    qt = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
-    qt.add_column("k", style="bold cyan", width=18)
-    qt.add_column("v")
-    qt.add_row("Query name", escape(name))
-    qt.add_row("Date of birth", escape(dob or "not provided"))
-    qt.add_row("Article URL", escape((url[:80] + "…") if len(url) > 80 else url))
-    qt.add_row("Article language", escape(result.language))
-    console.print(Panel(qt, title="Query", border_style="cyan"))
+    @staticmethod
+    def build_query_panel(name: str, dob: Optional[str], url: str, language: str) -> Panel:
+        qt = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+        qt.add_column("k", style="bold cyan", width=18)
+        qt.add_column("v")
+        qt.add_row("Query name", escape(name))
+        qt.add_row("Date of birth", escape(dob or "not provided"))
+        qt.add_row("Article URL", escape((url[:80] + "…") if len(url) > 80 else url))
+        qt.add_row("Article language", escape(language))
+        return Panel(qt, title="Query", border_style="cyan")
 
-    # ── Persons found ─────────────────────────────────────────────────────────
-    if result.persons_found:
+    @staticmethod
+    def build_persons_panel(persons_found: List[dict]) -> Optional[Panel]:
+        if not persons_found:
+            return None
         pt = Table(box=box.SIMPLE, show_header=True, padding=(0, 1))
         pt.add_column("Name in article", style="bold")
         pt.add_column("Context / role")
-        for p in result.persons_found:
+        for p in persons_found:
             pt.add_row(
                 escape(str(p.get("name_in_article", ""))),
                 escape(str(p.get("role", ""))),
             )
-        console.print(Panel(pt, title="Named individuals found", border_style="dim white"))
+        return Panel(pt, title="Named individuals found", border_style="dim white")
 
-    # ── Match verdict ─────────────────────────────────────────────────────────
-    console.print()
-    vt = Text()
-    vt.append(f"  VERDICT: {result.match_assessment}  ", style=f"{verdict_style} reverse")
-    vt.append(f"   confidence: {_pct(result.match_confidence)}")
-    if result.matched_name_in_article:
-        vt.append(f'   matched as: "{escape(result.matched_name_in_article)}"')
-    console.print(vt)
-    console.print()
+    @staticmethod
+    def build_verdict_text(
+        match_assessment: str,
+        match_confidence: Optional[float],
+        matched_name_in_article: Optional[str],
+    ) -> Text:
+        verdict_style = _VERDICT_STYLE.get(match_assessment, "bold white")
+        vt = Text()
+        vt.append(f"  VERDICT: {match_assessment}  ", style=f"{verdict_style} reverse")
+        vt.append(f"   confidence: {Renderer._pct(match_confidence)}")
+        if matched_name_in_article:
+            vt.append(f'   matched as: "{escape(matched_name_in_article)}"')
+        return vt
 
-    if result.match_reasoning:
-        console.print(Panel(
-            textwrap.fill(result.match_reasoning, width=88),
+    @staticmethod
+    def build_match_reasoning_panel(reasoning: Optional[str], border_color: str) -> Optional[Panel]:
+        if not reasoning:
+            return None
+        return Panel(
+            textwrap.fill(reasoning, width=88),
             title="[bold]Match reasoning[/bold]",
             border_style=border_color,
-        ))
+        )
 
-    if result.dob_evidence and result.dob_evidence.lower() not in ("none found", "none", ""):
-        console.print(f"\n  [bold]DOB / age evidence:[/bold] {escape(result.dob_evidence)}")
-
-    # ── Sentiment ─────────────────────────────────────────────────────────────
-    if result.match_assessment != "DISCARD" and result.sentiment:
-        sent_style = _SENTIMENT_STYLE.get(result.sentiment, "bold white")
-        sent_border = sent_style.split()[-1]
-
-        console.print()
+    @staticmethod
+    def build_sentiment_text(sentiment: str, sentiment_confidence: Optional[float]) -> Text:
+        sent_style = _SENTIMENT_STYLE.get(sentiment, "bold white")
         st = Text()
         st.append("  Sentiment: ", style="bold")
-        st.append(f" {result.sentiment} ", style=f"{sent_style} reverse")
-        st.append(f"   confidence: {_pct(result.sentiment_confidence)}")
-        console.print(st)
+        st.append(f" {sentiment} ", style=f"{sent_style} reverse")
+        st.append(f"   confidence: {Renderer._pct(sentiment_confidence)}")
+        return st
 
-        if result.sentiment_reasoning:
-            console.print(Panel(
-                textwrap.fill(result.sentiment_reasoning, width=88),
-                title="[bold]Sentiment reasoning[/bold]",
-                border_style=sent_border,
-            ))
+    @staticmethod
+    def build_sentiment_reasoning_panel(reasoning: Optional[str], border_color: str) -> Optional[Panel]:
+        if not reasoning:
+            return None
+        return Panel(
+            textwrap.fill(reasoning, width=88),
+            title="[bold]Sentiment reasoning[/bold]",
+            border_style=border_color,
+        )
 
-        if result.key_adverse_facts:
-            console.print("\n  [bold red]Key adverse facts:[/bold red]")
-            for fact in result.key_adverse_facts:
-                console.print(f"    • {escape(str(fact))}")
-
-        if result.key_positive_facts:
-            console.print("\n  [bold green]Key positive facts:[/bold green]")
-            for fact in result.key_positive_facts:
-                console.print(f"    • {escape(str(fact))}")
-
-    # ── Analyst note ──────────────────────────────────────────────────────────
-    if result.analyst_note:
-        console.print()
-        console.print(Panel(
-            textwrap.fill(result.analyst_note, width=88),
+    @staticmethod
+    def build_analyst_note_panel(analyst_note: Optional[str]) -> Optional[Panel]:
+        if not analyst_note:
+            return None
+        return Panel(
+            textwrap.fill(analyst_note, width=88),
             title="[bold yellow]Analyst note[/bold yellow]",
             border_style="yellow",
-        ))
+        )
 
-    console.print()
-    console.rule()
-    console.print()
+    # ── Main entry point ──────────────────────────────────────────────────────
+
+    def render(self, name: str, dob: Optional[str], url: str, result: ScreeningResult) -> None:
+        """Print a formatted screening report to the terminal."""
+        verdict_style = _VERDICT_STYLE.get(result.match_assessment, "bold white")
+        border_color = verdict_style.split()[-1]
+
+        self.console.print()
+        self.console.rule("[bold]Adverse Media Screening Report[/bold]")
+        self.console.print()
+
+        self.console.print(self.build_query_panel(name, dob, url, result.language))
+
+        persons_panel = self.build_persons_panel(result.persons_found or [])
+        if persons_panel is not None:
+            self.console.print(persons_panel)
+
+        self.console.print()
+        self.console.print(self.build_verdict_text(
+            result.match_assessment, result.match_confidence, result.matched_name_in_article
+        ))
+        self.console.print()
+
+        match_panel = self.build_match_reasoning_panel(result.match_reasoning, border_color)
+        if match_panel is not None:
+            self.console.print(match_panel)
+
+        if result.dob_evidence and result.dob_evidence.lower() not in ("none found", "none", ""):
+            self.console.print(f"\n  [bold]DOB / age evidence:[/bold] {escape(result.dob_evidence)}")
+
+        if result.match_assessment != "DISCARD" and result.sentiment:
+            sent_style = _SENTIMENT_STYLE.get(result.sentiment, "bold white")
+            sent_border = sent_style.split()[-1]
+
+            self.console.print()
+            self.console.print(self.build_sentiment_text(result.sentiment, result.sentiment_confidence))
+
+            sent_panel = self.build_sentiment_reasoning_panel(result.sentiment_reasoning, sent_border)
+            if sent_panel is not None:
+                self.console.print(sent_panel)
+
+            if result.key_adverse_facts:
+                self.console.print("\n  [bold red]Key adverse facts:[/bold red]")
+                for fact in result.key_adverse_facts:
+                    self.console.print(f"    • {escape(str(fact))}")
+
+            if result.key_positive_facts:
+                self.console.print("\n  [bold green]Key positive facts:[/bold green]")
+                for fact in result.key_positive_facts:
+                    self.console.print(f"    • {escape(str(fact))}")
+
+        analyst_panel = self.build_analyst_note_panel(result.analyst_note)
+        if analyst_panel is not None:
+            self.console.print()
+            self.console.print(analyst_panel)
+
+        self.console.print()
+        self.console.rule()
+        self.console.print()
+
+
+renderer = Renderer()

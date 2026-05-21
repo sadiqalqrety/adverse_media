@@ -1,5 +1,5 @@
 """renderer — Rich terminal report rendering."""
 
-from .renderer import render
+from .renderer import Renderer, renderer
 
-__all__ = ["render"]
+__all__ = ["Renderer", "renderer"]
