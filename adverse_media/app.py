@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 import sys
 from typing import Optional
 
@@ -24,6 +25,15 @@ console = Console()
 def main() -> None:
     configure_logging()
     args = build_parser().parse_args()
+
+    if not args.skip_llm_semantic_extractor and not os.environ.get("ANTHROPIC_API_KEY"):
+        console.print(
+            "[red]Error:[/red] ANTHROPIC_API_KEY is not set.\n"
+            "LLM semantic extraction requires a valid Anthropic API key.\n"
+            "Either export ANTHROPIC_API_KEY=<your-key> or re-run with "
+            "[bold]--skip-llm-semantic-extractor True[/bold] to use statistical extraction only."
+        )
+        sys.exit(1)
 
     if not args.name or not args.url:
         console.print("\n[bold cyan]━━ Adverse Media Screening Tool ━━[/bold cyan]")
