@@ -3,11 +3,22 @@
 from __future__ import annotations
 
 import logging
+import re
+from datetime import date
 from typing import Optional
 
 import spacy
 from spacy.tokens import Token
 from spacy.language import Language
+
+try:
+    from langdetect import detect as _ld_detect
+    from langdetect import LangDetectException as _LangDetectException
+    from langdetect.detector_factory import DetectorFactory as _DetectorFactory
+    _DetectorFactory.seed = 0  # deterministic output
+    _LANGDETECT_AVAILABLE = True
+except ImportError:
+    _LANGDETECT_AVAILABLE = False
 
 from .models import EntityCandidate
 from ..parser.models import Article
@@ -60,6 +71,35 @@ _ADVERSE_LEMMAS: frozenset[str] = frozenset({
 })
 
 
+_MONTHS = (
+    "January|February|March|April|May|June|July|August|"
+    "September|October|November|December|"
+    "Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec"
+)
+
+# Patterns that yield a single capture group: the numeric age.
+_AGE_RE: list[re.Pattern] = [
+    re.compile(r'\baged?\s+(\d{1,3})\b', re.IGNORECASE),
+    re.compile(r'\b(\d{1,3})\s*-?\s*years?\s*-?\s*old\b', re.IGNORECASE),
+    re.compile(r'\bage[:\s]+(\d{1,3})\b', re.IGNORECASE),
+]
+
+# Patterns that yield a single capture group: a 4-digit birth year.
+_BIRTH_YEAR_RE: list[re.Pattern] = [
+    re.compile(r'\bborn\s+(?:in\s+)?(\d{4})\b', re.IGNORECASE),
+    re.compile(
+        rf'\bborn\s+(?:on\s+)?(?:{_MONTHS})\.?\s+\d{{1,2}}(?:st|nd|rd|th)?[,\s]+(\d{{4}})\b',
+        re.IGNORECASE,
+    ),
+    re.compile(
+        rf'\bborn\s+(?:on\s+)?\d{{1,2}}(?:st|nd|rd|th)?\s+(?:{_MONTHS})\.?\s+(\d{{4}})\b',
+        re.IGNORECASE,
+    ),
+    re.compile(r'\(born\s+(\d{4})\)', re.IGNORECASE),
+    re.compile(r'\bb\.\s*(\d{4})\b', re.IGNORECASE),
+]
+
+
 class StatisticalSemanticExtractor:
     """Detects adverse media signals via spaCy dependency-tree path analysis.
 
@@ -86,6 +126,9 @@ class StatisticalSemanticExtractor:
         document entities are relevant to the query person when computing
         *has_adverse_signal* and *risk_score*.
         """
+        language = self._detect_language(article.text)
+        dob_evidence = self._analyse_dob(article.text, person)
+
         if self._nlp is None:
             logger.warning(
                 "Statistical extractor skipped — no spaCy model loaded",
@@ -95,6 +138,8 @@ class StatisticalSemanticExtractor:
                 adverse_entity_hits={},
                 has_adverse_signal=False,
                 risk_score=0.0,
+                language=language,
+                dob_evidence=dob_evidence,
             )
 
         doc = self._nlp(article.text)
@@ -149,9 +194,70 @@ class StatisticalSemanticExtractor:
             adverse_entity_hits=adverse_hits,
             has_adverse_signal=has_adverse_signal,
             risk_score=risk_score,
+            language=language,
+            dob_evidence=dob_evidence,
         )
 
     # ── private ───────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _detect_language(text: str) -> str:
+        """Return an ISO 639-1 language code for *text*, or 'unknown' on failure."""
+        if not _LANGDETECT_AVAILABLE:
+            return "unknown"
+        sample = text[:3000]  # langdetect needs ~200 chars; cap to avoid slow detection on huge texts
+        try:
+            return _ld_detect(sample)
+        except _LangDetectException:
+            return "unknown"
+
+    @staticmethod
+    def _analyse_dob(text: str, person: QueryPerson) -> str:
+        """Extract age or birth-year evidence from *text* and compare with *person.dob*.
+
+        Returns a human-readable evidence string. Comparison is only performed
+        when *person.dob* is set; otherwise the raw finding is reported.
+        """
+        today = date.today()
+
+        # --- try age mentions first ---
+        for pattern in _AGE_RE:
+            m = pattern.search(text)
+            if m:
+                article_age = int(m.group(1))
+                if not (1 <= article_age <= 120):
+                    continue
+                snippet = f"age {article_age} mentioned in article"
+                if person.dob:
+                    try:
+                        dob = date.fromisoformat(person.dob)
+                        expected_age = (today - dob).days // 365
+                        gap = abs(article_age - expected_age)
+                        verdict = "consistent" if gap <= 2 else f"conflict: {gap}-year gap"
+                        return f"{snippet} (query DOB: {person.dob} → expected ~{expected_age}; {verdict})"
+                    except ValueError:
+                        pass
+                return snippet
+
+        # --- try birth-year mentions ---
+        for pattern in _BIRTH_YEAR_RE:
+            m = pattern.search(text)
+            if m:
+                article_year = int(m.group(1))
+                if not (1850 <= article_year <= today.year):
+                    continue
+                snippet = f"born {article_year} mentioned in article"
+                if person.dob:
+                    try:
+                        query_year = date.fromisoformat(person.dob).year
+                        gap = abs(article_year - query_year)
+                        verdict = "consistent" if gap == 0 else f"conflict: {gap}-year gap"
+                        return f"{snippet} (query DOB: {person.dob}; {verdict})"
+                    except ValueError:
+                        pass
+                return snippet
+
+        return "none found"
 
     @staticmethod
     def _load_model(preferred: str | None) -> Optional[Language]:

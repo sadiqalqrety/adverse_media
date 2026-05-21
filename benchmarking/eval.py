@@ -7,16 +7,21 @@ Two benchmarks are available:
   Evaluates NamedEntityExtractor against CoNLL-2003 gold PER labels.
   Measures entity-level precision, recall, F1, and false-negative rate.
 
-  Screening benchmark (opt-in via --full, uses Claude API)
-  ──────────────────────────────────────────────────────────
+  Screening benchmark (opt-in via --full)
+  ────────────────────────────────────────
   Constructs synthetic match / no-match cases from CoNLL-2003 PER entities
-  and runs each through the full AdverseMediaChecker pipeline.
+  and runs each through the AdverseMediaChecker pipeline.
   Primary metric is recall — false negatives are a critical failure in
   adverse media screening.
 
+  By default the screening benchmark calls the Claude API for each case.
+  Pass --skip-llm-semantic-extractor True to run the statistical pre-screen
+  only — no API key required, useful for fast offline regression checks.
+
 Usage:
-    python -m benchmarking.eval                        # NER only
-    python -m benchmarking.eval --full --sample 50     # NER + screening
+    python -m benchmarking.eval                                               # NER only
+    python -m benchmarking.eval --full --sample 50                            # NER + screening (Claude)
+    python -m benchmarking.eval --full --skip-llm-semantic-extractor True     # NER + statistical-only screening
     python -m benchmarking.eval --full --split validation --sample 30
 """
 
@@ -103,22 +108,27 @@ def run_ner_benchmark(documents: list[ConllDocument]) -> NERMetrics:
 # Screening benchmark
 # ──────────────────────────────────────────────────────────────────────────────
 
-def run_screening_benchmark(cases: list[EvalCase]) -> ScreeningMetrics:
-    """Evaluate the full :class:`AdverseMediaChecker` pipeline on synthetic cases.
+def run_screening_benchmark(cases: list[EvalCase], skip_llm: bool = False) -> ScreeningMetrics:
+    """Evaluate the :class:`AdverseMediaChecker` pipeline on synthetic cases.
 
     Each case injects article text directly into the pipeline via
     :class:`_DirectFetcher` and :class:`_PlainTextParser`, so no HTTP
-    requests are made.  The Claude API is still called for each case.
+    requests are made.
+
+    When *skip_llm* is ``False`` (default) the Claude API is called for each
+    case.  When *skip_llm* is ``True`` only the statistical pre-screen is used
+    and no API key is required.
 
     Decision rule:
         ``DISCARD``                       → predicted_match = False
         ``POSSIBLE_MATCH / LIKELY_MATCH`` → predicted_match = True
 
-    On API failure the case is conservatively treated as a potential match
+    On failure the case is conservatively treated as a potential match
     to avoid introducing artificial false negatives.
 
     Args:
         cases: Eval cases from :func:`build_eval_cases`.
+        skip_llm: Pass ``True`` to bypass the Claude LLM call.
 
     Returns:
         :class:`ScreeningMetrics` with recall as the primary metric.
@@ -131,7 +141,7 @@ def run_screening_benchmark(cases: list[EvalCase]) -> ScreeningMetrics:
                 fetcher=_DirectFetcher(case.article_text),   # type: ignore[arg-type]
                 parser=_PlainTextParser(),                    # type: ignore[arg-type]
             )
-            result = checker.screen(case.query_name, dob=None, url="synthetic://eval")
+            result = checker.screen(case.query_name, dob=None, url="synthetic://eval", skip_llm=skip_llm)
             predicted_match = result.match_assessment != "DISCARD"
         except Exception as exc:
             logger.warning(
@@ -177,6 +187,7 @@ def print_report(
     *,
     split: str,
     n_docs: int,
+    skip_llm: bool = False,
 ) -> None:
     W = 62
     print(f"\n{'━' * W}")
@@ -200,7 +211,8 @@ def print_report(
 
     # ── Screening ─────────────────────────────────────────────────────────────
     if screening is not None:
-        print(f"\n  ┌─ Screening pipeline  (AdverseMediaChecker · Claude)")
+        mode_label = "statistical only — no LLM" if skip_llm else "AdverseMediaChecker · Claude"
+        print(f"\n  ┌─ Screening pipeline  ({mode_label})")
         print(f"  │")
         print(f"  │  Case breakdown  (n={screening.total})")
         print(f"  │    True positives  {screening.true_positives:>6}  correctly flagged as match")
@@ -217,7 +229,8 @@ def print_report(
     else:
         print(
             "\n  Screening benchmark skipped.\n"
-            "  Re-run with --full to include the Claude API evaluation."
+            "  Re-run with --full to include the screening evaluation.\n"
+            "  Add --skip-llm-semantic-extractor True to run without the Claude API."
         )
 
     print()
@@ -239,6 +252,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
               # Full pipeline with Claude (50 cases per class):
               python -m benchmarking.eval --full --sample 50
+
+              # Screening benchmark using statistical pre-screen only (no API key needed):
+              python -m benchmarking.eval --full --skip-llm-semantic-extractor True
 
               # Use validation split, 30 cases, custom sentence grouping:
               python -m benchmarking.eval --full --split validation \\
@@ -269,6 +285,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--seed", type=int, default=42,
         help="Random seed for reproducible case sampling (default: 42)",
     )
+    p.add_argument(
+        "--skip-llm-semantic-extractor",
+        type=lambda x: x.lower() == "true", default=False,
+        dest="skip_llm_semantic_extractor",
+        metavar="True|False",
+        help=(
+            "Skip the Claude LLM call in the screening benchmark — "
+            "statistical pre-screen only, no ANTHROPIC_API_KEY required (default: False)"
+        ),
+    )
     return p
 
 
@@ -297,7 +323,7 @@ def main() -> None:
             seed=args.seed,
         )
         if cases:
-            screening_metrics = run_screening_benchmark(cases)
+            screening_metrics = run_screening_benchmark(cases, skip_llm=args.skip_llm_semantic_extractor)
         else:
             logger.warning("No eval cases could be constructed — skipping screening benchmark.")
 
@@ -306,6 +332,7 @@ def main() -> None:
         screening_metrics,
         split=args.split,
         n_docs=len(documents),
+        skip_llm=args.skip_llm_semantic_extractor,
     )
 
 

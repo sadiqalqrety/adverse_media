@@ -195,3 +195,82 @@ The `enrichment` parameter is optional; the extractor's behaviour is unchanged w
 **Cost and latency.** Each enrichment session adds at minimum one LLM call and several web-search round-trips. The trigger condition and budget cap are the primary controls. For high-throughput batch screening, enrichment should be opt-in or reserved for cases above a minimum risk threshold.
 
 **Prompt injection via fetched pages.** A malicious web page could contain text designed to manipulate the agent's reasoning. Fetched content should be sandboxed in the prompt (clearly labelled, placed after the system prompt's instructions) and the agent should be explicitly instructed to treat it as untrusted third-party data.
+
+---
+
+## Statistical Entity Resolution
+
+The agentic enrichment workflow described above delegates identity disambiguation to an LLM. An alternative — or complementary — approach is to resolve entity identity deterministically using structured reference data, without invoking a language model at all.
+
+### Core idea
+
+Maintain an offline knowledge base of real-world persons compiled from heterogeneous sources. At screening time, query the knowledge base with the candidate name(s) surfaced by the NER pass and retrieve matching records. Each retrieved record supplies structured attributes — date of birth, nationality, profession, known aliases — that can be compared against the article text and the query person using rule-based logic. A confidence score is derived from the number and quality of attribute overlaps, with no LLM required.
+
+### Data sources
+
+**Proprietary datasets**
+
+Commercially licensed databases are the highest-quality source for regulated financial-crime use cases: *sanctions lists* (OFAC SDN, UN, EU, HMT — machine-readable, updated daily, include DOB and known aliases), *PEP registers* (World-Check, Dow Jones, LexisNexis Bridger — role, jurisdiction, and family relationships), *corporate registries* (Companies House, SEC EDGAR, OpenCorporates — named directors with appointment dates), and *court and insolvency records* (PACER, UK Insolvency Register — named parties with case-level adverse context).
+
+**Open-source datasets**
+
+Freely available structured sources provide broad coverage: *Wikidata* (typed person properties — DOB, citizenship, occupation, aliases, transliteration variants — queryable via SPARQL), *Wikipedia abstracts* (birth date, nationality, and occupation extractable from the opening paragraph), *OpenSanctions* (aggregates 100+ public sanctions and PEP lists into a deduplicated bulk download, updated daily), and the *GLEIF LEI register* (maps legal entities to controlling persons for beneficial-ownership resolution).
+
+**Crawled datasets**
+
+Web-derived signals fill gaps left by structured sources: a *news byline corpus* (articles indexed by the persons named in bylines establishes whether a candidate is a known journalist, politician, or executive and in what context), *LinkedIn public profiles* (via authorised API or licensed data partner — professional history useful for disambiguating namesakes across industries), and the *Wikipedia redirect graph* (redirect pages encode name variants and historical spellings not always present in the alias property, crawlable from the data dump).
+
+### Matching pipeline
+
+```
+Query name(s) from NER
+        │
+        ▼
+  1. Name normalisation
+     • Unicode normalisation (NFC), diacritic stripping
+     • Surname-first reordering for CJK / East Asian names
+     • Honorific and title removal
+     • Alias expansion (nicknames, transliteration variants)
+        │
+        ▼
+  2. Candidate retrieval
+     • Exact-match lookup against name and alias indices
+     • Approximate-match using trigram or phonetic similarity
+       (Soundex / Double Metaphone for English; custom rules for
+        Arabic, Chinese, and South Asian naming conventions)
+        │
+        ▼
+  3. Attribute scoring
+     For each retrieved record, score attribute overlaps:
+     • DOB match or age consistency      → high weight
+     • Nationality / jurisdiction match  → medium weight
+     • Profession / employer match       → medium weight
+     • Co-occurring entity overlap       → low weight
+        │
+        ▼
+  4. Confidence aggregation
+     Weighted sum → normalised [0, 1] similarity score
+     Threshold:  ≥ 0.80  → LIKELY_MATCH
+                 0.40–0.79 → POSSIBLE_MATCH
+                 < 0.40   → DISCARD
+        │
+        ▼
+  5. Conflict detection
+     Flag cases where two distinct records score above threshold
+     (genuine namesakes) → retain POSSIBLE_MATCH, surface both
+     records in analyst_note
+```
+
+### Relationship to the existing pipeline
+
+Statistical entity resolution can operate at two points in the pipeline:
+
+- **As a pre-filter before the LLM call** — retrieve a knowledge-base record and inject its attributes into the `LLMSemanticExtractor` prompt as enrichment context. This is structurally equivalent to the agentic approach but sourced from a local index rather than a live web search: lower latency, fully offline, deterministic.
+- **As a replacement for the LLM call when `--skip-llm-semantic-extractor True` is set** — the knowledge-base lookup and attribute scoring take the place of `LLMSemanticExtractor.analyse()`, keeping the pipeline entirely local. Match confidence, language, DOB evidence, and sentiment are then derived from the structured record and the statistical pre-screen rather than from a generative model.
+
+### Limitations
+
+- **Coverage** — public figures and sanctioned individuals are well represented; private individuals with no web presence are not. The statistical approach degrades gracefully to `POSSIBLE_MATCH` when no record is found, rather than failing.
+- **Staleness** — reference datasets require regular refresh. Sanctions and PEP lists should be re-ingested at least daily; Wikidata and corporate registries weekly.
+- **Name diversity** — phonetic and transliteration matching for Arabic, Chinese, and South Asian names requires script-specific normalisation rules that are non-trivial to maintain and test. The LLM handles these cases more robustly out of the box.
+- **Conflation risk** — approximate matching can merge distinct individuals who share a common name. Precision is the key risk here (the inverse of recall), so conflation thresholds should be tuned conservatively and disputed cases should be escalated to the LLM or a human analyst.

@@ -20,7 +20,9 @@ class StatisticalScreeningResult:
 
     adverse_entity_hits: dict[str, list[str]]  # entity name → adverse lemmas linked via dep tree
     has_adverse_signal: bool
-    risk_score: float  # 0.0–1.0, normalised adverse signal intensity
+    risk_score: float                    # 0.0–1.0, normalised adverse signal intensity
+    language: str = "unknown"            # ISO 639-1 code, or "unknown" if detection fails
+    dob_evidence: str = "none found"     # extracted age/DOB mention + comparison against query DOB
 
 
 @dataclass

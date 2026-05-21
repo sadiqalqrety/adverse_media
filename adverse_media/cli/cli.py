@@ -31,6 +31,9 @@ def build_parser() -> argparse.ArgumentParser:
 
               # Full structured report (default is a two-line summary):
               python -m adverse_media.app --name "James Smith" --url "https://..." --detailed True
+
+              # Skip the Claude LLM call — statistical pre-screen only (no API key required):
+              python -m adverse_media.app --name "James Smith" --url "https://..." --skip-llm-semantic-extractor True
         """),
     )
     p.add_argument("--name", help="Full name of the individual to screen for")
@@ -47,6 +50,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--detailed", type=lambda x: x.lower() == "true", default=False,
         metavar="True|False",
         help="Print the full structured report (default: False — two-line summary)",
+    )
+    p.add_argument(
+        "--skip-llm-semantic-extractor",
+        type=lambda x: x.lower() == "true", default=False,
+        dest="skip_llm_semantic_extractor",
+        metavar="True|False",
+        help=(
+            "Skip the Claude LLM call and return statistical pre-screen results only "
+            "(default: False). No ANTHROPIC_API_KEY required when True."
+        ),
     )
     return p
 

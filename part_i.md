@@ -24,3 +24,13 @@ Screening an individual against a news article URL proceeds through five sequent
 ## Design philosophy
 
 The pipeline is deliberately layered — cheap, deterministic operations run first and their outputs inform the more expensive ones. The statistical stage acts as a structured pre-signal rather than a decision-maker; the LLM stage is the authoritative decision-maker but benefits from the NER candidates as grounding context. No single stage is expected to be correct in isolation.
+
+## NER performance benchmarking
+
+The named-entity extraction step (stage 3) is evaluated against [CoNLL-2003](https://www.clips.uantwerpen.be/conll2003/ner/), a standard newswire NER corpus annotated with `PER`, `ORG`, `LOC`, and `MISC` entity types. Only the `PER` labels are used.
+
+The benchmark groups CoNLL-2003 sentences into pseudo-documents and compares `NamedEntityExtractor`'s predicted `PERSON` mentions against the gold `B-PER` / `I-PER` annotations using case-insensitive exact-mention matching. It reports entity-level precision, recall, F1, and false-negative rate.
+
+CoNLL-2003 is also used to evaluate the end-to-end screening pipeline: gold PER entities are paired with the documents they appear in (true positives) or with documents they do not appear in (true negatives), and each case is run through the full `AdverseMediaChecker`. The primary metric is recall — a false negative in adverse media screening is a critical compliance failure.
+
+See the [benchmarking README](benchmarking/README.md) for instructions on running both evaluations.

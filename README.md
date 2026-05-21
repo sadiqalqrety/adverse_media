@@ -33,6 +33,8 @@ Set your Anthropic API key before running:
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
+> **No API key?** Pass `--skip-llm-semantic-extractor True` to bypass the Claude call and run the statistical pre-screen only. Match assessment, sentiment, language, and DOB evidence are derived from the spaCy dependency-tree pass alone. See [Limitations](#limitations) for what this mode cannot handle.
+
 ## Running the tool
 
 ```bash
@@ -64,6 +66,15 @@ poetry run python -m adverse_media.app \
   --dob 1985-03-15 \
   --url "https://example.com/news/article" \
   --detailed True
+
+# Statistical pre-screen only — bypasses the Claude LLM call, no API key required.
+# Match assessment, sentiment, language, and DOB evidence are derived from the
+# spaCy dependency-tree pass alone. Accuracy is reduced: see Limitations.
+poetry run python -m adverse_media.app \
+  --name "James Smith" \
+  --dob 1985-03-15 \
+  --url "https://example.com/news/article" \
+  --skip-llm-semantic-extractor True
 ```
 
 ## Running the NLP benchmark
@@ -98,6 +109,7 @@ The pipeline has three extraction layers: a spaCy NER pass (`NamedEntityExtracto
 
 - [Part I — Current approach](part_i.md): high-level walkthrough of the five-stage screening pipeline.
 - [Part II — Agentic enrichment](part_ii.md): design plan for automating web-research enrichment when key disambiguating details are absent from an article.
+- [Benchmarking](benchmarking/README.md): how to run the NER and screening benchmarks against CoNLL-2003, including offline mode via `--skip-llm-semantic-extractor`.
 
 ## Logging
 

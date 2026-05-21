@@ -45,7 +45,7 @@ def main() -> None:
 
     with console.status("[cyan]Fetching and analysing article…[/cyan]"):
         try:
-            result = checker.screen(name, dob, url)
+            result = checker.screen(name, dob, url, skip_llm=args.skip_llm_semantic_extractor)
         except RuntimeError as exc:
             console.print(f"[red]Error:[/red] {exc}")
             sys.exit(1)
