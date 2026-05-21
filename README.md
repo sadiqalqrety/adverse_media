@@ -64,6 +64,19 @@ poetry run python -m benchmarking.eval --full --sample 50
 poetry run python -m benchmarking.eval --help
 ```
 
+## Limitations
+
+The pipeline has three extraction layers: a spaCy NER pass (`NamedEntityExtractor`), a spaCy dependency-tree pass (`StatisticalSemanticExtractor`), and a Claude LLM pass (`LLMSemanticExtractor`). The table below summarises how each layer handles four known edge cases.
+
+| Case | NER (spaCy) | Statistical (spaCy) | LLM (Claude) |
+|---|---|---|---|
+| Nicknames / initials (James → Jim, J. Smith) | No | No | Yes — explicit examples in system prompt |
+| Middle name used as given name (Robert James Brown → James Brown) | No | No | Yes — explicit in system prompt |
+| Foreign-language articles | Partial — multilingual model (`xx_ent_wiki_sm`) covers many scripts | No — English-only models (`en_core_web_lg/sm`); adverse-lemma matching silently fails on non-English text | Yes — returns ISO 639-1 language code; system prompt notes NER may miss transliterated names |
+| Non-Western name conventions (surname-first, bin/binti, Al-, clan names, transliteration variants) | Partial — depends on which spaCy model is loaded and its training data | No — entity strings are matched verbatim against NER output with no normalisation | Yes — system prompt explicitly covers CJK surname-first order, Mohamed/Muhammad variants, honorifics (Dato', Tan Sri), compound surnames (Mac/Mc, O', Al-/El-, bin/binti, s/o) |
+
+**Key takeaway:** `StatisticalSemanticExtractor` is English-only and performs no name matching — all four cases effectively rely on `LLMSemanticExtractor` for correct handling. The spaCy layers serve as signal pre-filters and hints, not authoritative identity resolvers.
+
 ## Logging
 
 The log level is controlled via the `LOG_LEVEL` environment variable (default: `INFO`). All output is structured JSON, suitable for log-aggregation systems.
