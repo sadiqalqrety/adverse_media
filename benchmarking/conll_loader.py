@@ -194,18 +194,65 @@ def _extract_per_entities(tokens: list[str], ner_tags: list[str]) -> list[str]:
 # Public API
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _sentences_to_document(sentences: list[list[tuple[str, str]]]) -> ConllDocument:
+    """Build a ConllDocument from a list of (token, ner_tag) sentence lists."""
+    all_tokens: list[str] = []
+    all_entities: list[str] = []
+    for sentence in sentences:
+        tokens = [t for t, _ in sentence]
+        ner_tags = [n for _, n in sentence]
+        all_tokens.extend(tokens)
+        all_tokens.append("")
+        all_entities.extend(_extract_per_entities(tokens, ner_tags))
+
+    text = " ".join(t for t in all_tokens if t).strip()
+    seen: set[str] = set()
+    unique_entities: list[str] = []
+    for entity in all_entities:
+        if entity not in seen:
+            seen.add(entity)
+            unique_entities.append(entity)
+
+    return ConllDocument(text=text, gold_per_entities=unique_entities, sentence_count=len(sentences))
+
+
+def _parse_all_sentences(raw: str) -> list[list[tuple[str, str]]]:
+    """Return every sentence in *raw* as a flat list, ignoring DOCSTART boundaries."""
+    all_sentences: list[list[tuple[str, str]]] = []
+    current: list[tuple[str, str]] = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if line.startswith("-DOCSTART-"):
+            continue
+        if not line:
+            if current:
+                all_sentences.append(current)
+                current = []
+            continue
+        parts = line.split()
+        if len(parts) >= 4:
+            current.append((parts[0], parts[3]))
+    if current:
+        all_sentences.append(current)
+    return all_sentences
+
+
 def load_conll_documents(
     split: str = "test",
+    sentences_per_doc: int | None = None,
     limit: int | None = None,
 ) -> list[ConllDocument]:
     """Download (or load from cache) CoNLL-2003 and return parsed documents.
 
     Args:
         split: ``"train"``, ``"validation"`` (testa), or ``"test"`` (testb).
+        sentences_per_doc: When set, ignore ``-DOCSTART-`` boundaries and
+            instead group every *sentences_per_doc* consecutive sentences into
+            a pseudo-document.  Useful for creating fixed-size evaluation units.
         limit: Maximum number of documents to return (``None`` = all).
 
     Returns:
-        List of :class:`ConllDocument` objects, one per ``-DOCSTART-`` block.
+        List of :class:`ConllDocument` objects.
 
     Raises:
         ValueError: If *split* is not one of the supported values.
@@ -215,7 +262,15 @@ def load_conll_documents(
         raise ValueError(f"split must be one of {list(_SPLIT_FILES)}; got {split!r}")
 
     raw = _fetch_raw(split)
-    documents = _parse_conll_iob1(raw)
+
+    if sentences_per_doc is not None:
+        all_sentences = _parse_all_sentences(raw)
+        documents = [
+            _sentences_to_document(all_sentences[i : i + sentences_per_doc])
+            for i in range(0, len(all_sentences), sentences_per_doc)
+        ]
+    else:
+        documents = _parse_conll_iob1(raw)
 
     logger.info(
         "Parsed %d CoNLL-2003 documents from %s split (%d total sentences)",
