@@ -71,7 +71,7 @@ class _PlainTextParser:
     """Wraps plain text in an Article without running BeautifulSoup."""
 
     def parse(self, html: str, url: str) -> Article:
-        return Article(url=url, title="", text=html[:_MAX_TEXT_CHARS], html=html)
+        return Article(url=url, title="", text=html[:_MAX_TEXT_CHARS], html=html, lemmatized_text="")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ def run_ner_benchmark(documents: list[ConllDocument]) -> NERMetrics:
     pred_sets: list[set[str]] = []
 
     for doc in tqdm(documents, desc="NER benchmark", unit="doc"):
-        article = Article(url="", title="", text=doc.text, html="")
+        article = Article(url="", title="", text=doc.text, html="", lemmatized_text="")
         candidates = ner.extract(article)
         gold_sets.append(set(doc.gold_per_entities))
         pred_sets.append({c.name for c in candidates})
