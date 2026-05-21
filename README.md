@@ -2,6 +2,15 @@
 
 Adverse media screening tool — given a person's name and date of birth and a news article URL, determines whether the article refers to that individual and classifies the coverage as positive, negative, or neutral.
 
+## Table of contents
+
+- [Installation](#installation)
+- [Running the tool](#running-the-tool)
+- [Running the NLP benchmark](#running-the-nlp-benchmark)
+- [Limitations](#limitations)
+- [Further reading](#further-reading)
+- [Logging](#logging)
+
 ## Installation
 
 Requires Python 3.12 and [Poetry](https://python-poetry.org/docs/#installation).
