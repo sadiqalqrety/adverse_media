@@ -6,13 +6,13 @@ import textwrap
 from typing import List, Optional
 
 from rich import box
-from rich.console import Console
+from rich.console import Console, Group
 from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from ..checker.models import ScreeningResult
+from ..checker.models import ScreeningResult, StatisticalScreeningResult
 
 _VERDICT_STYLE = {
     "DISCARD": "bold green",
@@ -108,6 +108,30 @@ class Renderer:
         )
 
     @staticmethod
+    def build_statistical_panel(stat: StatisticalScreeningResult) -> Panel:
+        border_color = "red" if stat.has_adverse_signal else "green"
+        signal_label = "[bold red]YES[/bold red]" if stat.has_adverse_signal else "[bold green]NO[/bold green]"
+
+        st = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+        st.add_column("k", style="bold", width=20)
+        st.add_column("v")
+        st.add_row("Adverse signal", signal_label)
+        st.add_row("Risk score", Renderer._pct(stat.risk_score))
+
+        if stat.adverse_entity_hits:
+            ht = Table(box=box.SIMPLE, show_header=True, padding=(0, 1))
+            ht.add_column("Entity", style="bold")
+            ht.add_column("Linked adverse signals")
+            for entity, lemmas in stat.adverse_entity_hits.items():
+                ht.add_row(escape(entity), escape(", ".join(lemmas)))
+
+            content: object = Group(st, ht)
+        else:
+            content = st
+
+        return Panel(content, title="Statistical pre-screen", border_style=border_color)
+
+    @staticmethod
     def build_analyst_note_panel(analyst_note: Optional[str]) -> Optional[Panel]:
         if not analyst_note:
             return None
@@ -143,6 +167,9 @@ class Renderer:
         match_panel = self.build_match_reasoning_panel(result.match_reasoning, border_color)
         if match_panel is not None:
             self.console.print(match_panel)
+
+        if result.statistical_result is not None:
+            self.console.print(self.build_statistical_panel(result.statistical_result))
 
         if result.dob_evidence and result.dob_evidence.lower() not in ("none found", "none", ""):
             self.console.print(f"\n  [bold]DOB / age evidence:[/bold] {escape(result.dob_evidence)}")
